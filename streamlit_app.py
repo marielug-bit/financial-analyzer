@@ -64,6 +64,35 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ── Navigation Cards ──────────────────────────────────────────────────────────
+# Style nav buttons to look like big emoji cards
+st.markdown("""<style>
+div[data-testid="stHorizontalBlock"] div[data-testid="stVerticalBlock"] .stButton > button {
+    background: linear-gradient(145deg,#131720,#1a2035) !important;
+    border: 2px solid #1e2d40 !important;
+    border-radius: 20px !important;
+    height: 110px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 10px !important;
+    font-size: .82rem !important;
+    font-weight: 800 !important;
+    letter-spacing: .08em !important;
+    text-transform: uppercase !important;
+    color: #fff !important;
+    transition: all .25s cubic-bezier(.4,0,.2,1) !important;
+    white-space: pre-line !important;
+    line-height: 1.2 !important;
+}
+div[data-testid="stHorizontalBlock"] div[data-testid="stVerticalBlock"] .stButton > button:hover {
+    border-color: #00d4aa !important;
+    transform: translateY(-4px) !important;
+    box-shadow: 0 12px 32px rgba(0,212,170,.18) !important;
+    color: #00d4aa !important;
+}
+</style>""", unsafe_allow_html=True)
+
 nav_items = [
     ("🔍", "Discover",   "pages/1_Discover.py"),
     ("💼", "Portfolio",  "pages/2_Portfolio.py"),
@@ -75,26 +104,9 @@ nav_items = [
 cols = st.columns(5, gap="small")
 for col, (emoji, label, path) in zip(cols, nav_items):
     with col:
-        st.markdown(f"""
-        <div class="nav-card" onclick="void(0)">
-          <span class="nav-emoji">{emoji}</span>
-          <span class="nav-label">{label}</span>
-        </div>
-        """, unsafe_allow_html=True)
-        if st.button(label, key=f"nav_{label}", use_container_width=True,
-                     help=f"Go to {label}"):
+        if st.button(f"{emoji}\n{label}", key=f"nav_{label}",
+                     use_container_width=True, help=f"Go to {label}"):
             st.switch_page(path)
-
-# invisible button overlay CSS
-st.markdown("""<style>
-div[data-testid="column"] .stButton {
-    margin-top: -88px; position: relative; z-index: 10;
-}
-div[data-testid="column"] .stButton > button {
-    opacity: 0; height: 88px; border: none !important;
-    background: transparent !important;
-}
-</style>""", unsafe_allow_html=True)
 
 # ── Investment Opportunities ──────────────────────────────────────────────────
 section("💡 Investment Opportunities Today")
