@@ -103,11 +103,11 @@ def _extract_answer(result: dict) -> str:
 
 async def run_query(question: str) -> str:
     """Run a single query through the full multi-agent pipeline."""
-    async with MultiServerMCPClient(_server_config()) as client:
-        tools = client.get_tools()
-        agent = create_agent(_get_llm(), tools, system_prompt=_get_system_prompt())
-        result = await agent.ainvoke({"messages": [HumanMessage(content=question)]})
-        return _extract_answer(result)
+    client = MultiServerMCPClient(_server_config())
+    tools = await client.get_tools()
+    agent = create_agent(_get_llm(), tools, system_prompt=_get_system_prompt())
+    result = await agent.ainvoke({"messages": [HumanMessage(content=question)]})
+    return _extract_answer(result)
 
 
 async def run_session(pre_index: list[str] | None = None) -> None:
@@ -119,57 +119,57 @@ async def run_session(pre_index: list[str] | None = None) -> None:
     console = Console()
     coach_on = _coach_mode_on()
 
-    async with MultiServerMCPClient(_server_config()) as client:
-        tools = client.get_tools()
-        tool_names = [t.name for t in tools]
-        agent = create_agent(_get_llm(), tools, system_prompt=_get_system_prompt())
+    client = MultiServerMCPClient(_server_config())
+    tools = await client.get_tools()
+    tool_names = [t.name for t in tools]
+    agent = create_agent(_get_llm(), tools, system_prompt=_get_system_prompt())
 
-        mode_label = "[bold yellow]Coach Mode ON[/bold yellow] 🎓" if coach_on else "[bold cyan]Advanced Mode[/bold cyan]"
-        console.print(Panel(
-            f"[bold green]MCP Agents connected[/bold green] ({len(tool_names)} tools) — {mode_label}\n" +
-            "\n".join(f"  ✓ [cyan]{n}[/cyan]" for n in tool_names),
-            title="[bold]Financial Intelligence System[/bold]",
-            border_style="blue",
-        ))
+    mode_label = "[bold yellow]Coach Mode ON[/bold yellow] 🎓" if coach_on else "[bold cyan]Advanced Mode[/bold cyan]"
+    console.print(Panel(
+        f"[bold green]MCP Agents connected[/bold green] ({len(tool_names)} tools) — {mode_label}\n" +
+        "\n".join(f"  ✓ [cyan]{n}[/cyan]" for n in tool_names),
+        title="[bold]Financial Intelligence System[/bold]",
+        border_style="blue",
+    ))
 
-        if pre_index:
-            for doc_path in pre_index:
-                console.print(f"\n[yellow]Indexing {os.path.basename(doc_path)}...[/yellow]")
-                res = await agent.ainvoke(
-                    {"messages": [HumanMessage(content=f"Index the document at: {doc_path}")]}
-                )
-                console.print(f"[green]{_extract_answer(res)}[/green]")
+    if pre_index:
+        for doc_path in pre_index:
+            console.print(f"\n[yellow]Indexing {os.path.basename(doc_path)}...[/yellow]")
+            res = await agent.ainvoke(
+                {"messages": [HumanMessage(content=f"Index the document at: {doc_path}")]}
+            )
+            console.print(f"[green]{_extract_answer(res)}[/green]")
+
+    if coach_on:
+        console.print("\n[dim]Hi! I'm your financial coach. Ask me anything about investing. Type 'quit' to exit.[/dim]\n")
+    else:
+        console.print("\n[dim]Type your question (or 'quit' to exit)[/dim]\n")
+
+    while True:
+        try:
+            question = input(">>> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            console.print("\n[dim]Goodbye.[/dim]")
+            break
+
+        if not question:
+            continue
+        if question.lower() in {"quit", "exit", "q"}:
+            console.print("[dim]Goodbye.[/dim]")
+            break
 
         if coach_on:
-            console.print("\n[dim]Hi! I'm your financial coach. Ask me anything about investing. Type 'quit' to exit.[/dim]\n")
+            console.print("\n[yellow]Your coach is thinking...[/yellow]\n")
         else:
-            console.print("\n[dim]Type your question (or 'quit' to exit)[/dim]\n")
+            console.print("\n[yellow]Agents working...[/yellow]\n")
 
-        while True:
-            try:
-                question = input(">>> ").strip()
-            except (EOFError, KeyboardInterrupt):
-                console.print("\n[dim]Goodbye.[/dim]")
-                break
-
-            if not question:
-                continue
-            if question.lower() in {"quit", "exit", "q"}:
-                console.print("[dim]Goodbye.[/dim]")
-                break
-
-            if coach_on:
-                console.print("\n[yellow]Your coach is thinking...[/yellow]\n")
-            else:
-                console.print("\n[yellow]Agents working...[/yellow]\n")
-
-            try:
-                result = await agent.ainvoke({"messages": [HumanMessage(content=question)]})
-                answer = _extract_answer(result)
-                console.print(Markdown(answer))
-            except Exception as exc:
-                console.print(f"[red]Error: {exc}[/red]")
-            console.print()
+        try:
+            result = await agent.ainvoke({"messages": [HumanMessage(content=question)]})
+            answer = _extract_answer(result)
+            console.print(Markdown(answer))
+        except Exception as exc:
+            console.print(f"[red]Error: {exc}[/red]")
+        console.print()
 
 
 async def run_weekly_report_session() -> None:
@@ -190,9 +190,9 @@ async def run_weekly_report_session() -> None:
     )
 
     console.print("\n[yellow]Generating weekly coach report...[/yellow]\n")
-    async with MultiServerMCPClient(_server_config()) as client:
-        tools = client.get_tools()
-        agent = create_agent(_get_llm(), tools, system_prompt=_get_system_prompt())
-        result = await agent.ainvoke({"messages": [HumanMessage(content=prompt)]})
-        answer = _extract_answer(result)
-        console.print(Markdown(answer))
+    client = MultiServerMCPClient(_server_config())
+    tools = await client.get_tools()
+    agent = create_agent(_get_llm(), tools, system_prompt=_get_system_prompt())
+    result = await agent.ainvoke({"messages": [HumanMessage(content=prompt)]})
+    answer = _extract_answer(result)
+    console.print(Markdown(answer))

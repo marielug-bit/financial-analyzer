@@ -175,9 +175,8 @@ class _MCPSession:
         from langchain_mcp_adapters.client import MultiServerMCPClient
         from langchain.agents import create_agent
         try:
-            self._cm = MultiServerMCPClient(_server_config())
-            client = await self._cm.__aenter__()
-            tools = client.get_tools()
+            self._client = MultiServerMCPClient(_server_config())
+            tools = await self._client.get_tools()
             self.tool_names = [t.name for t in tools]
             self._agent = create_agent(
                 _get_llm(), tools, system_prompt=_get_system_prompt()
@@ -223,10 +222,6 @@ class _MCPSession:
         return future.result(timeout=timeout)
 
     def cleanup(self):
-        async def _stop():
-            if self._cm:
-                await self._cm.__aexit__(None, None, None)
-        asyncio.run_coroutine_threadsafe(_stop(), self._loop).result(timeout=10)
         self._loop.call_soon_threadsafe(self._loop.stop)
 
 
