@@ -51,11 +51,19 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-current_coach = os.getenv("COACH_MODE", "true").lower() == "true"
+current_coach = os.getenv("COACH_MODE", "on").strip().lower() == "on"
 new_coach = st.toggle("Enable Coach Mode", value=current_coach)
 if new_coach != current_coach:
-    _save_env("COACH_MODE", "true" if new_coach else "false")
-    st.success("Coach Mode " + ("enabled ✅" if new_coach else "disabled"))
+    _save_env("COACH_MODE", "on" if new_coach else "off")
+    # Restart MCP session so it picks up the new system prompt
+    mcp = st.session_state.get("_mcp")
+    if mcp:
+        mcp.cleanup()
+        del st.session_state["_mcp"]
+    st.success("Coach Mode " + ("enabled ✅ — AI will explain everything in plain English for beginners."
+                                if new_coach else
+                                "disabled — AI will give concise, data-focused responses."))
+    st.info("MCP agents restarted to apply the change.")
 
 # ── Tracked Tickers ───────────────────────────────────────────────────────────
 section("📈 Tracked Tickers")
