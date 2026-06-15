@@ -10,7 +10,8 @@ load_dotenv()
 from utils.theme import inject_css, section
 from utils.market import (
     tracked_tickers, get_ticker_info, get_news,
-    concept_of_day, format_price, one_line_description, daily_opportunities,
+    concept_of_day, format_price, one_line_description,
+    smart_opportunities, daily_opportunities,
 )
 
 st.set_page_config(
@@ -121,16 +122,34 @@ risk_cfg = {
 }
 
 tickers = tracked_tickers()
-today_picks = daily_opportunities()   # {cat: ticker} — rotates daily
+
+# Smart picks: scored from ~120 candidates (cached 24h; spinner shown on first load)
+_picks_placeholder = st.empty()
+with _picks_placeholder:
+    with st.spinner("Scanning 120 stocks to find today's best picks…"):
+        try:
+            smart_picks = smart_opportunities()   # {cat: {ticker, health, momentum}}
+        except Exception:
+            smart_picks = {
+                cat: {"ticker": t, "health": 5, "momentum": 0.0}
+                for cat, t in daily_opportunities().items()
+            }
+_picks_placeholder.empty()
+
+today_picks = {cat: v["ticker"] for cat, v in smart_picks.items()}
 opp_cols = st.columns(3, gap="small")
 for col, (cat, (icon, label, color, default_why)) in zip(opp_cols, risk_cfg.items()):
     with col:
-        info  = get_ticker_info(today_picks[cat])
-        pct   = info["change_pct"]
-        arrow = "▲" if pct >= 0 else "▼"
-        pct_c = "#00d4aa" if pct >= 0 else "#ff4757"
-        why   = one_line_description(info) or default_why
+        info   = get_ticker_info(today_picks[cat])
+        meta   = smart_picks[cat]
+        pct    = info["change_pct"]
+        arrow  = "▲" if pct >= 0 else "▼"
+        pct_c  = "#00d4aa" if pct >= 0 else "#ff4757"
+        why    = one_line_description(info) or default_why
         if len(why) > 110: why = why[:107] + "…"
+        mom    = meta["momentum"]
+        mom_c  = "#00d4aa" if mom >= 0 else "#ff4757"
+        mom_arrow = "▲" if mom >= 0 else "▼"
         st.markdown(f"""
         <div class="opp-card">
           <div class="opp-bar" style="background:{color}"></div>
@@ -139,6 +158,16 @@ for col, (cat, (icon, label, color, default_why)) in zip(opp_cols, risk_cfg.item
           <div class="opp-price">
             {format_price(info['price'])}
             &nbsp;<span style="color:{pct_c}">{arrow} {pct:+.2f}%</span>
+          </div>
+          <div style="display:flex;gap:8px;margin:8px 0 4px;flex-wrap:wrap">
+            <span style="background:#00d4aa18;color:#00d4aa;border-radius:99px;
+              padding:2px 10px;font-size:.72rem;font-weight:700">
+              ❤️ Health {meta['health']}/10
+            </span>
+            <span style="background:{mom_c}18;color:{mom_c};border-radius:99px;
+              padding:2px 10px;font-size:.72rem;font-weight:700">
+              {mom_arrow} {mom:+.1f}% week
+            </span>
           </div>
           <div class="opp-why">{why}</div>
         </div>

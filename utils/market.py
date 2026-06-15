@@ -49,34 +49,111 @@ GLOSSARY: dict[str, str] = {
 }
 
 
-OPPORTUNITY_UNIVERSE: dict[str, list[str]] = {
-    # High volatility: beta > 1.5, can easily move ±20-40% in weeks
+LARGE_UNIVERSE: dict[str, list[str]] = {
+    # High volatility: high-beta growth, crypto-adjacent, speculative tech
     "high": [
-        "NVDA", "TSLA", "COIN", "PLTR", "MRNA", "SNOW", "SPOT",
-        "AMD", "SHOP", "RBLX", "SOFI", "HOOD", "SMCI", "MSTR",
-        "ARKK", "IONQ", "RIOT", "MARA", "LUNR", "JOBY",
+        "NVDA", "TSLA", "COIN", "PLTR", "MRNA", "SNOW", "SPOT", "AMD",
+        "SHOP", "RBLX", "SOFI", "HOOD", "SMCI", "MSTR", "IONQ", "RIOT",
+        "MARA", "LUNR", "JOBY", "DKNG", "ROKU", "UPST", "AFRM", "LCID",
+        "RIVN", "NIO", "XPEV", "CVNA", "BILL", "DOCN", "CRWD", "PANW",
+        "ZS", "MDB", "DDOG", "NET", "HUBS", "GTLB", "PATH", "AI",
     ],
-    # Moderate volatility: established tech/growth, typical ±10-20% swings
+    # Moderate volatility: established tech & consumer, typical ±10-20% swings
     "moderate": [
-        "AAPL", "MSFT", "GOOGL", "META", "AMZN", "NFLX", "CRM",
-        "ORCL", "ADBE", "QCOM", "PYPL", "DIS", "SBUX", "UBER",
-        "ABNB", "SQ", "INTC", "SNAP", "PINS", "ZM",
+        "AAPL", "MSFT", "GOOGL", "META", "AMZN", "NFLX", "CRM", "ORCL",
+        "ADBE", "QCOM", "PYPL", "DIS", "SBUX", "UBER", "ABNB", "SQ",
+        "INTC", "SNAP", "PINS", "ZM", "JPM", "GS", "MS", "BAC",
+        "UNH", "HD", "TGT", "COST", "NKE", "LOW", "TXN", "AVGO",
+        "NOW", "INTU", "ISRG", "TMO", "DHR", "VEEV", "ZTS", "REGN",
     ],
-    # Low volatility: blue chips & defensives, slow steady growers
+    # Low volatility: blue chips, defensives, utilities, steady dividends
     "low": [
-        "JNJ", "KO", "PEP", "WMT", "XOM", "CVX", "V",
-        "MA", "MCD", "PG", "KHC", "CL", "GIS", "HSY",
-        "O", "NEE", "DUK", "AWK", "ED", "T",
+        "JNJ", "KO", "PEP", "WMT", "XOM", "CVX", "V", "MA",
+        "MCD", "PG", "KHC", "CL", "GIS", "HSY", "O", "NEE",
+        "DUK", "AWK", "ED", "T", "VZ", "PM", "MO", "MMM",
+        "ETN", "ITW", "PH", "TFC", "WFC", "USB", "BLK", "SPGI",
+        "MCO", "ICE", "AEP", "SO", "D", "EXC", "WEC", "ES",
     ],
+}
+
+# Keep small universe as fallback if batch download fails
+_FALLBACK_UNIVERSE: dict[str, list[str]] = {
+    "high":     ["NVDA", "TSLA", "COIN", "PLTR", "AMD"],
+    "moderate": ["AAPL", "MSFT", "GOOGL", "META", "AMZN"],
+    "low":      ["JNJ", "KO", "PEP", "WMT", "V"],
 }
 
 
 def daily_opportunities() -> dict[str, str]:
-    """Return one ticker per risk category, rotating daily."""
+    """Fallback: rotate through fallback universe by day (used if smart scoring fails)."""
     ordinal = datetime.date.today().toordinal()
-    return {
-        cat: tickers[ordinal % len(tickers)]
-        for cat, tickers in OPPORTUNITY_UNIVERSE.items()
+    return {cat: tickers[ordinal % len(tickers)] for cat, tickers in _FALLBACK_UNIVERSE.items()}
+
+
+@st.cache_data(ttl=86400)
+def smart_opportunities() -> dict[str, dict]:
+    """
+    Pick the best stock per risk category from ~120 candidates.
+    Strategy:
+      1. Batch-download weekly prices for all tickers (one fast API call)
+      2. Sort each category by weekly momentum, take top 6 candidates
+      3. Fetch full metrics for those 18 stocks and compute composite score
+      4. Composite = health_score * 10 + momentum_bonus (health is primary driver)
+    Cached for 24 hours so the home page loads instantly after first visit.
+    """
+    import yfinance as yf
+    import pandas as pd
+
+    all_tickers = [t for tickers in LARGE_UNIVERSE.values() for t in tickers]
+
+    # ── Step 1: batch weekly price download ──────────────────────────────────
+    momentum: dict[str, float] = {}
+    try:
+        raw = yf.download(all_tickers, period="1wk", progress=False, auto_adjust=True)
+        closes = raw["Close"]
+        if isinstance(closes, pd.Series):
+            closes = closes.to_frame(all_tickers[0])
+        closes = closes.dropna(how="all")
+        if len(closes) >= 2:
+            pct = ((closes.iloc[-1] - closes.iloc[0]) / closes.iloc[0] * 100)
+            momentum = pct.fillna(0).to_dict()
+    except Exception:
+        pass
+
+    # ── Step 2 & 3: score top candidates per category ────────────────────────
+    result: dict[str, dict] = {}
+    for cat, tickers in LARGE_UNIVERSE.items():
+        # Sort by momentum, take top 6 for deep scoring
+        sorted_t = sorted(tickers, key=lambda t: momentum.get(t, 0), reverse=True)
+        candidates = sorted_t[:6]
+
+        best_ticker, best_score = candidates[0], -999.0
+        best_health, best_mom = 5, 0.0
+
+        for ticker in candidates:
+            try:
+                info = get_ticker_info(ticker)
+                health, _, _ = compute_health_score(info)
+                mom = momentum.get(ticker, 0.0)
+                # Health is primary (80%), momentum is tiebreaker (20%)
+                score = health * 10.0 + max(min(mom, 20.0), -20.0) * 1.0
+                if score > best_score:
+                    best_score = score
+                    best_ticker = ticker
+                    best_health = health
+                    best_mom = mom
+            except Exception:
+                continue
+
+        result[cat] = {
+            "ticker":  best_ticker,
+            "health":  best_health,
+            "momentum": round(best_mom, 2),
+        }
+
+    return result if result else {
+        cat: {"ticker": t[0], "health": 5, "momentum": 0.0}
+        for cat, t in _FALLBACK_UNIVERSE.items()
     }
 
 
